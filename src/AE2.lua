@@ -1,4 +1,4 @@
--- AE2 Helper Module for Waterline Tier Controller
+-- AE2 Helper Module for ME Controller
 -- Provides functions to check item and fluid quantities in AE2 network
 
 local component = require("component")

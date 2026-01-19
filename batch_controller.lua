@@ -11,6 +11,7 @@ local filesystem = require("filesystem")
 
 local ae2 = require("src.AE2")
 local recipesConfig = require("recipes_config")
+local redstoneConfig = require("redstone_config")
 
 local REDSTONE_ON = 15
 local REDSTONE_OFF = 0
@@ -19,6 +20,34 @@ local CHECK_INTERVAL = 10 -- seconds
 -- Helper: round up division
 local function ceildiv(a, b)
     return math.floor((a + b - 1) / b)
+end
+
+-- Set redstone output for a specific tier
+local function setRedstoneOutput(tier, value)
+    local tierConfig = redstoneConfig.tiers[tier]
+    if tierConfig and tierConfig.address then
+        local redstone = component.proxy(tierConfig.address)
+        if redstone then
+            redstone.setOutput(tierConfig.side, value)
+            return true
+        else
+            print(string.format("Warning: Could not proxy redstone at %s", tierConfig.address:sub(1, 8)))
+            return false
+        end
+    else
+        print(string.format("Warning: No redstone configured for tier %d", tier))
+        return false
+    end
+end
+
+-- Enable redstone signal for a tier
+local function enableRedstone(tier)
+    return setRedstoneOutput(tier, REDSTONE_ON)
+end
+
+-- Disable redstone signal for a tier
+local function disableRedstone(tier)
+    return setRedstoneOutput(tier, REDSTONE_OFF)
 end
 
 -- Get requested craft amount for a recipe (stub: replace with actual request logic)
@@ -52,11 +81,19 @@ local function checkAndOutputRedstone()
             end
 
             if allInputsSufficient then
-                print("All inputs sufficient for batch. Outputting redstone signal!")
-                -- TODO: Output redstone signal here
+                print(string.format("All inputs sufficient for %s batch. Outputting redstone signal!", recipeName))
+                if recipe.tier then
+                    enableRedstone(recipe.tier)
+                else
+                    print(string.format("Warning: Recipe '%s' has no tier configured", recipeName))
+                end
             else
-                print("Not enough resources for batch. No redstone output.")
-                -- TODO: Ensure redstone is off here
+                print(string.format("Not enough resources for %s batch. No redstone output.", recipeName))
+                if recipe.tier then
+                    disableRedstone(recipe.tier)
+                else
+                    print(string.format("Warning: Recipe '%s' has no tier configured", recipeName))
+                end
             end
         end
     end

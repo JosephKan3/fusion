@@ -8,6 +8,7 @@ local recipes = {
             { name = "Molten Titanium", amount = 432, type = "fluid" },
         },
         output = { name = "Tritanium Ingot", amount = 1, type = "item" },
+        tier = 1, -- Redstone tier for this recipe
     },
     -- Add more recipes here as needed
 }
@@ -22,3 +23,5 @@ return {
     ABSOLUTE_MINIMUM_OUTPUT_RECIPE_BATCH_SIZE = ABSOLUTE_MINIMUM_OUTPUT_RECIPE_BATCH_SIZE,
     DEFAULT_BATCH_PERCENT = DEFAULT_BATCH_PERCENT,
 }
+
+
