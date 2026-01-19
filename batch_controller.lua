@@ -17,6 +17,20 @@ local REDSTONE_ON = 15
 local REDSTONE_OFF = 0
 local CHECK_INTERVAL = 10 -- seconds
 
+-- Find ME Interface for checking crafting status
+local meInterface = nil
+local function findMEInterface()
+    for address, name in component.list() do
+        if string.find(name, "interface") then
+            local proxy = component.proxy(address)
+            if proxy.getCpus then
+                return proxy
+            end
+        end
+    end
+    return nil
+end
+
 -- Helper: round up division
 local function ceildiv(a, b)
     return math.floor((a + b - 1) / b)
@@ -50,21 +64,99 @@ local function disableRedstone(tier)
     return setRedstoneOutput(tier, REDSTONE_OFF)
 end
 
--- Get requested craft amount for a recipe (stub: replace with actual request logic)
-local function getRequestedAmount(recipeName)
-    -- TODO: Replace with actual logic to read requested amount from AE2 or user input
-    return 90 -- Example: 90 tritanium requested
+-- Helper to safely collect items from CPU lists
+local function collectItems(source)
+    local list = {}
+    -- Try calling if it's a function or callable table
+    if type(source) == "function" or (type(source) == "table" and getmetatable(source) and getmetatable(source).__call) then
+        local ok, res = pcall(source)
+        if ok and res then source = res end
+    end
+
+    if type(source) == "table" then
+        for _, item in ipairs(source) do
+            local display_name = item.label or item.name or "Unknown"
+            table.insert(list, { name = display_name, size = item.size or 1 })
+        end
+    end
+    return list
+end
+
+-- Check if an item is currently being crafted
+local function isItemBeingCrafted(itemName)
+    if not meInterface then
+        return false
+    end
+
+    local success, cpus = pcall(meInterface.getCpus)
+    if not success or not cpus then
+        return false
+    end
+
+    for i, cpu_wrapper in ipairs(cpus) do
+        local internal = cpu_wrapper.cpu
+        if internal and cpu_wrapper.busy then
+            -- Check finalOutput first
+            if internal.finalOutput then
+                local out = internal.finalOutput
+                if type(out) == "function" then
+                    local _, r = pcall(out)
+                    out = r
+                end
+
+                if out and type(out) == "table" then
+                    local name = out.label or out.name or "Unknown"
+                    if name == itemName then
+                        return true
+                    end
+                end
+            end
+
+            -- Check active items
+            if internal.activeItems then
+                local activeList = collectItems(internal.activeItems)
+                for _, item in ipairs(activeList) do
+                    if item.name == itemName then
+                        return true
+                    end
+                end
+            end
+
+            -- Check pending items
+            if internal.pendingItems then
+                local pendingList = collectItems(internal.pendingItems)
+                for _, item in ipairs(pendingList) do
+                    if item.name == itemName then
+                        return true
+                    end
+                end
+            end
+
+            -- Check stored items
+            if internal.storedItems then
+                local storedList = collectItems(internal.storedItems)
+                for _, item in ipairs(storedList) do
+                    if item.name == itemName then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+
+    return false
 end
 
 -- Main logic
 local function checkAndOutputRedstone()
     for recipeName, recipe in pairs(recipesConfig.recipes) do
-        local requested = getRequestedAmount(recipeName)
-        if requested and requested > 0 then
-            local batchPercent = recipesConfig.DEFAULT_BATCH_PERCENT
-            local minBatch = recipesConfig.ABSOLUTE_MINIMUM_OUTPUT_RECIPE_BATCH_SIZE
-            local batchSize = math.max(ceildiv(requested * batchPercent, 1), minBatch)
+        local outputName = recipe.output.name
+        local isCrafting = isItemBeingCrafted(outputName)
 
+        if isCrafting then
+            print(string.format("Detected active craft for: %s", outputName))
+
+            -- Check if all inputs are present in the crafting system
             local allInputsSufficient = true
             for _, input in ipairs(recipe.inputs) do
                 local stored = 0
@@ -73,31 +165,47 @@ local function checkAndOutputRedstone()
                 else
                     stored = ae2.getItemAmount(input.name)
                 end
-                if stored < batchSize * input.amount then
+
+                -- Check if the input is available (at least the recipe amount)
+                if stored < input.amount then
                     allInputsSufficient = false
-                    print(string.format("Insufficient %s: need %d, have %d", input.name, batchSize * input.amount, stored))
+                    print(string.format("Insufficient %s: need %d, have %d", input.name, input.amount, stored))
                     break
                 end
             end
 
             if allInputsSufficient then
-                print(string.format("All inputs sufficient for %s batch. Outputting redstone signal!", recipeName))
+                print(string.format("All inputs sufficient for %s. Outputting redstone signal!", outputName))
                 if recipe.tier then
                     enableRedstone(recipe.tier)
                 else
                     print(string.format("Warning: Recipe '%s' has no tier configured", recipeName))
                 end
             else
-                print(string.format("Not enough resources for %s batch. No redstone output.", recipeName))
+                print(string.format("Not enough resources for %s. No redstone output.", outputName))
                 if recipe.tier then
                     disableRedstone(recipe.tier)
                 else
                     print(string.format("Warning: Recipe '%s' has no tier configured", recipeName))
                 end
             end
+        else
+            -- No active craft detected, ensure redstone is off
+            if recipe.tier then
+                disableRedstone(recipe.tier)
+            end
         end
     end
 end
+
+-- Initialize ME Interface
+print("Batch Redstone Output Controller")
+print("Initializing ME Interface...")
+meInterface = findMEInterface()
+if not meInterface then
+    error("No ME Interface found! Cannot detect crafting requests.")
+end
+print("ME Interface found. Starting controller...")
 
 -- Main loop
 while true do
