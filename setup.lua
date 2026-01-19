@@ -74,6 +74,12 @@ local function downloadFiles()
         shell.execute("mv " .. CONFIG_FILE .. ".bak " .. CONFIG_FILE)
     end
 
+    print("Downloading src/AE2.lua")
+    shell.execute(string.format(
+        "wget -f https://raw.githubusercontent.com/%s/%s/src/AE2.lua src/AE2.lua",
+        repo, branch
+    ))
+
     print("\nFiles downloaded successfully!")
 end
 
@@ -141,10 +147,7 @@ local function getSideName(sideNum)
 end
 
 local function promptForTier(tierNum, addresses)
-    print(string.format("\n--- Tier %d Configuration ---", tierNum))
-    if tierNum == 0 then
-        print("(Main controller - activates with highest active tier)")
-    end
+    print(string.format("\n--- Controller %d Configuration ---", tierNum))
 
     -- Prompt for address
     io.write("Enter redstone I/O address (or number from list, or 'skip'): ")
@@ -313,7 +316,7 @@ local function setupHardware()
 
     local config = {
         tiers = {},
-        check_interval = 120
+        check_interval = 5
     }
 
     -- Configure ME Interface
@@ -321,7 +324,7 @@ local function setupHardware()
 
     -- Configure check interval
     print("\n--- Check Interval ---")
-    io.write("Enter check interval in seconds (default 120): ")
+    io.write("Enter check interval in seconds (default 5): ")
     local intervalInput = io.read()
     local interval = tonumber(intervalInput)
     if interval and interval > 0 then
@@ -329,13 +332,12 @@ local function setupHardware()
     end
 
     -- Configure each tier
-    print("\n=== Tier Configuration ===")
-    print("Configure redstone output for each tier (0-8)")
-    print("Tier 0 is the main controller that activates with all active tiers")
-    print("Tiers 1-8 control individual machines")
+    print("\n=== Controller Configuration ===")
+    print("Configure each redstone output (1-8)")
+    print("Controllers 1-8 control individual machines")
     print("")
 
-    for i = 0, 8 do
+    for i = 1, 8 do
         config.tiers[i] = promptForTier(i, addresses)
     end
 
